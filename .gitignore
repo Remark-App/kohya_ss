@@ -13,3 +13,4 @@ gui-user.ps1
 wandb
 logs
 SmilingWolf
+.idea/*

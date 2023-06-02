@@ -1,0 +1,16 @@
+FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
+RUN apt-get update && apt-get install ffmpeg libsm6 libxext6 zip curl wget -y
+WORKDIR /app
+COPY ./requirements.txt /app
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+RUN unzip awscliv2.zip
+RUN ./aws/install
+RUN rm -rf awscliv2.zip
+RUN rm -rf aws
+RUN aws configure set default.s3.max_concurrent_requests 50
+RUN aws configure set default.s3.max_queue_size 20000
+RUN aws configure set default.s3.multipart_threshold 128MB
+RUN aws configure set default.s3.multipart_chunksize 64MB
+RUN aws configure set default.s3.max_bandwidth 4000MB/s
+RUN aws configure set default.s3.preferred_transfer_client crt
+RUN pip install -r requirements.txt
