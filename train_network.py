@@ -26,6 +26,14 @@ from library.config_util import (
 import library.huggingface_util as huggingface_util
 import library.custom_train_functions as custom_train_functions
 from library.custom_train_functions import apply_snr_weight, get_weighted_text_embeddings, pyramid_noise_like, apply_noise_offset
+import requests
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
+https_request_session = requests.Session()
+https_retries = Retry(total=3,
+                      backoff_factor=0.1,
+                      status_forcelist=[429, 500, 502, 503, 504])
+https_request_session.mount('https://', HTTPAdapter(max_retries=https_retries))
 
 
 # TODO 他のスクリプトと共通化する
@@ -720,6 +728,7 @@ def train(args):
         save_model(ckpt_name, network, global_step, num_train_epochs, force_sync_upload=True)
 
         print("model saved.")
+        return True
 
 
 def setup_parser() -> argparse.ArgumentParser:
@@ -770,7 +779,24 @@ def setup_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="automatically determine dim (rank) from network_weights / dim (rank)をnetwork_weightsで指定した重みから自動で決定する",
     )
-
+    parser.add_argument(
+        "--callback_url",
+        type=str,
+        default=None,
+        help="url to send a post request to when training is finished",
+    )
+    parser.add_argument(
+        "--s3_output_path",
+        type=str,
+        default=None,
+        help="s3 path to save the model to",
+    )
+    parser.add_argument(
+        "--model_id",
+        type=str,
+        default=None,
+        help="model id to send with the callback request",
+    )
     return parser
 
 
@@ -780,4 +806,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args = train_util.read_config_from_file(args, parser)
 
-    train(args)
+    ret = train(args)
+    if ret:
+        if args.s3_output_path:
+            os.system(f"aws s3 cp {args.output_dir}/{args.output_name}.safetensors {args.s3_output_path}/")
+        if args.callback_url:
+            https_request_session.post(args.callback_url, json={"message": str(100), "status": 3, "model_id": args.model_id, "lora_model_path": args.s3_output_path + f"/{args.output_name}.safetensors"})
