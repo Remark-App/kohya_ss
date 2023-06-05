@@ -809,6 +809,6 @@ if __name__ == "__main__":
     ret = train(args)
     if ret:
         if args.s3_output_path:
-            os.system(f"aws s3 cp {args.output_dir}/{args.output_name}.safetensors {args.s3_output_path}/")
+            os.system(f"aws s3 cp {args.output_dir}/{args.output_name}.safetensors {args.s3_output_path}")
         if args.callback_url:
-            https_request_session.post(args.callback_url, json={"message": str(100), "status": 3, "model_id": args.model_id, "lora_model_path": args.s3_output_path + f"/{args.output_name}.safetensors"})
+            https_request_session.post(args.callback_url, json={"message": str(100), "status": 3, "model_id": args.model_id, "lora_model_path": args.s3_output_path})
