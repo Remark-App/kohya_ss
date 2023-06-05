@@ -35,7 +35,11 @@ if __name__ == "__main__":
             r = requests.get(image, timeout=3)
             if not r.headers['Content-Type'].startswith('image'):
                 continue
-            with open(path + image.split("/")[-1], "wb") as f:
+            # get image format
+            image_format = r.headers['Content-Type'].split('/')[-1]
+
+            with open(path + f"{i}.{image_format}", "wb") as f:
                 f.write(r.content)
+            i += 1
         except:
             pass
