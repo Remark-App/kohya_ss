@@ -12,5 +12,5 @@ git pull
 :: Activate the virtual environment
 call .\venv\Scripts\activate.bat
 
-:: Upgrade the required packages
-pip install --use-pep517 --upgrade -r requirements.txt
+:: Validate requirements
+python.exe .\tools\validate_requirements.py

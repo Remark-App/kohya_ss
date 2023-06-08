@@ -4,6 +4,8 @@
 # v3.1: Adding captionning of images to utilities
 
 import gradio as gr
+import logging
+import time
 
 # import easygui
 import json
@@ -46,6 +48,11 @@ from library.svd_merge_lora_gui import gradio_svd_merge_lora_tab
 from library.verify_lora_gui import gradio_verify_lora_tab
 from library.resize_lora_gui import gradio_resize_lora_tab
 from library.sampler_gui import sample_gradio_config, run_cmd_sample
+
+from library.custom_logging import setup_logging
+
+# Set up logging
+log = setup_logging()
 
 # from easygui import msgbox
 
@@ -95,7 +102,8 @@ def save_configuration(
     text_encoder_lr,
     unet_lr,
     network_dim,
-    lora_network_weights,dim_from_weights,
+    lora_network_weights,
+    dim_from_weights,
     color_aug,
     flip_aug,
     clip_skip,
@@ -119,10 +127,16 @@ def save_configuration(
     caption_dropout_rate,
     optimizer,
     optimizer_args,
-    noise_offset_type,noise_offset,adaptive_noise_scale,
+    noise_offset_type,
+    noise_offset,
+    adaptive_noise_scale,
     multires_noise_iterations,
     multires_noise_discount,
     LoRA_type,
+    factor,
+    use_cp,
+    decompose_both,
+    train_on_input,
     conv_dim,
     conv_alpha,
     sample_every_n_steps,
@@ -147,6 +161,11 @@ def save_configuration(
     save_last_n_steps_state,
     use_wandb,
     wandb_api_key,
+    scale_v_pred_loss_like_noise_pred,
+    scale_weight_norms,
+    network_dropout,
+    rank_dropout,
+    module_dropout,
 ):
     # Get list of function parameters and values
     parameters = list(locals().items())
@@ -156,14 +175,14 @@ def save_configuration(
     save_as_bool = True if save_as.get('label') == 'True' else False
 
     if save_as_bool:
-        print('Save as...')
+        log.info('Save as...')
         file_path = get_saveasfile_path(file_path)
     else:
-        print('Save...')
+        log.info('Save...')
         if file_path == None or file_path == '':
             file_path = get_saveasfile_path(file_path)
 
-    # print(file_path)
+    # log.info(file_path)
 
     if file_path == None or file_path == '':
         return original_file_path  # In case a file_path was provided and the user decide to cancel the open action
@@ -232,7 +251,8 @@ def open_configuration(
     text_encoder_lr,
     unet_lr,
     network_dim,
-    lora_network_weights,dim_from_weights,
+    lora_network_weights,
+    dim_from_weights,
     color_aug,
     flip_aug,
     clip_skip,
@@ -256,10 +276,16 @@ def open_configuration(
     caption_dropout_rate,
     optimizer,
     optimizer_args,
-    noise_offset_type,noise_offset,adaptive_noise_scale,
+    noise_offset_type,
+    noise_offset,
+    adaptive_noise_scale,
     multires_noise_iterations,
     multires_noise_discount,
     LoRA_type,
+    factor,
+    use_cp,
+    decompose_both,
+    train_on_input,
     conv_dim,
     conv_alpha,
     sample_every_n_steps,
@@ -284,6 +310,11 @@ def open_configuration(
     save_last_n_steps_state,
     use_wandb,
     wandb_api_key,
+    scale_v_pred_loss_like_noise_pred,
+    scale_weight_norms,
+    network_dropout,
+    rank_dropout,
+    module_dropout,
 ):
     # Get list of function parameters and values
     parameters = list(locals().items())
@@ -299,7 +330,7 @@ def open_configuration(
         # load variables from JSON file
         with open(file_path, 'r') as f:
             my_data = json.load(f)
-            print('Loading config...')
+            log.info('Loading config...')
 
             # Update values to fix deprecated use_8bit_adam checkbox, set appropriate optimizer if it is set to True, etc.
             my_data = update_my_data(my_data)
@@ -361,7 +392,8 @@ def train_model(
     text_encoder_lr,
     unet_lr,
     network_dim,
-    lora_network_weights,dim_from_weights,
+    lora_network_weights,
+    dim_from_weights,
     color_aug,
     flip_aug,
     clip_skip,
@@ -385,10 +417,16 @@ def train_model(
     caption_dropout_rate,
     optimizer,
     optimizer_args,
-    noise_offset_type,noise_offset,adaptive_noise_scale,
+    noise_offset_type,
+    noise_offset,
+    adaptive_noise_scale,
     multires_noise_iterations,
     multires_noise_discount,
     LoRA_type,
+    factor,
+    use_cp,
+    decompose_both,
+    train_on_input,
     conv_dim,
     conv_alpha,
     sample_every_n_steps,
@@ -413,8 +451,14 @@ def train_model(
     save_last_n_steps_state,
     use_wandb,
     wandb_api_key,
+    scale_v_pred_loss_like_noise_pred,
+    scale_weight_norms,
+    network_dropout,
+    rank_dropout,
+    module_dropout,
 ):
     print_only_bool = True if print_only.get('label') == 'True' else False
+    log.info(f'Start training LoRA {LoRA_type} ...')
     headless_bool = True if headless.get('label') == 'True' else False
 
     if pretrained_model_name_or_path == '':
@@ -534,35 +578,35 @@ def train_model(
                 ]
             )
 
-            print(f'Folder {folder}: {num_images} images found')
+            log.info(f'Folder {folder}: {num_images} images found')
 
             # Calculate the total number of steps for this folder
             steps = repeats * num_images
 
-            # Print the result
-            print(f'Folder {folder}: {steps} steps')
+            # log.info the result
+            log.info(f'Folder {folder}: {steps} steps')
 
             total_steps += steps
 
         except ValueError:
             # Handle the case where the folder name does not contain an underscore
-            print(
+            log.info(
                 f"Error: '{folder}' does not contain an underscore, skipping..."
             )
 
     if reg_data_dir == '':
         reg_factor = 1
     else:
-        print(
+        log.info(
             '\033[94mRegularisation images are used... Will double the number of steps required...\033[0m'
         )
         reg_factor = 2
 
-    print(f'Total steps: {total_steps}')
-    print(f'Train batch size: {train_batch_size}')
-    print(f'Gradient accumulation steps: {gradient_accumulation_steps}')
-    print(f'Epoch: {epoch}')
-    print(f'Regulatization factor: {reg_factor}')
+    log.info(f'Total steps: {total_steps}')
+    log.info(f'Train batch size: {train_batch_size}')
+    log.info(f'Gradient accumulation steps: {gradient_accumulation_steps}')
+    log.info(f'Epoch: {epoch}')
+    log.info(f'Regulatization factor: {reg_factor}')
 
     # calculate max_train_steps
     max_train_steps = int(
@@ -574,7 +618,9 @@ def train_model(
             * int(reg_factor)
         )
     )
-    print(f'max_train_steps ({total_steps} / {train_batch_size} / {gradient_accumulation_steps} * {epoch} * {reg_factor}) = {max_train_steps}')
+    log.info(
+        f'max_train_steps ({total_steps} / {train_batch_size} / {gradient_accumulation_steps} * {epoch} * {reg_factor}) = {max_train_steps}'
+    )
 
     # calculate stop encoder training
     if stop_text_encoder_training_pct == None:
@@ -583,10 +629,10 @@ def train_model(
         stop_text_encoder_training = math.ceil(
             float(max_train_steps) / 100 * int(stop_text_encoder_training_pct)
         )
-    print(f'stop_text_encoder_training = {stop_text_encoder_training}')
+    log.info(f'stop_text_encoder_training = {stop_text_encoder_training}')
 
     lr_warmup_steps = round(float(int(lr_warmup) * int(max_train_steps) / 100))
-    print(f'lr_warmup_steps = {lr_warmup_steps}')
+    log.info(f'lr_warmup_steps = {lr_warmup_steps}')
 
     run_cmd = f'accelerate launch --num_cpu_threads_per_process={num_cpu_threads_per_process} "train_network.py"'
 
@@ -621,26 +667,73 @@ def train_model(
         run_cmd += f' --save_model_as={save_model_as}'
     if not float(prior_loss_weight) == 1.0:
         run_cmd += f' --prior_loss_weight={prior_loss_weight}'
+
     if LoRA_type == 'LoCon' or LoRA_type == 'LyCORIS/LoCon':
         try:
             import lycoris
         except ModuleNotFoundError:
-            print(
+            log.info(
                 "\033[1;31mError:\033[0m The required module 'lycoris_lora' is not installed. Please install by running \033[33mupgrade.ps1\033[0m before running this program."
             )
             return
         run_cmd += f' --network_module=lycoris.kohya'
         run_cmd += f' --network_args "conv_dim={conv_dim}" "conv_alpha={conv_alpha}" "algo=lora"'
+
     if LoRA_type == 'LyCORIS/LoHa':
         try:
             import lycoris
         except ModuleNotFoundError:
-            print(
+            log.info(
                 "\033[1;31mError:\033[0m The required module 'lycoris_lora' is not installed. Please install by running \033[33mupgrade.ps1\033[0m before running this program."
             )
             return
         run_cmd += f' --network_module=lycoris.kohya'
-        run_cmd += f' --network_args "conv_dim={conv_dim}" "conv_alpha={conv_alpha}" "algo=loha"'
+        run_cmd += f' --network_args "conv_dim={conv_dim}" "conv_alpha={conv_alpha}" "use_cp={use_cp}" "algo=loha"'
+        # This is a hack to fix a train_network LoHA logic issue
+        if not network_dropout > 0.0:
+            run_cmd += f' --network_dropout="{network_dropout}"'
+
+    if LoRA_type == 'LyCORIS/iA3':
+        try:
+            import lycoris
+        except ModuleNotFoundError:
+            log.info(
+                "\033[1;31mError:\033[0m The required module 'lycoris_lora' is not installed. Please install by running \033[33mupgrade.ps1\033[0m before running this program."
+            )
+            return
+        run_cmd += f' --network_module=lycoris.kohya'
+        run_cmd += f' --network_args "conv_dim={conv_dim}" "conv_alpha={conv_alpha}" "train_on_input={train_on_input}" "algo=ia3"'
+        # This is a hack to fix a train_network LoHA logic issue
+        if not network_dropout > 0.0:
+            run_cmd += f' --network_dropout="{network_dropout}"'
+
+    if LoRA_type == 'LyCORIS/DyLoRA':
+        try:
+            import lycoris
+        except ModuleNotFoundError:
+            log.info(
+                "\033[1;31mError:\033[0m The required module 'lycoris_lora' is not installed. Please install by running \033[33mupgrade.ps1\033[0m before running this program."
+            )
+            return
+        run_cmd += f' --network_module=lycoris.kohya'
+        run_cmd += f' --network_args "conv_dim={conv_dim}" "conv_alpha={conv_alpha}" "use_cp={use_cp}" "block_size={unit}" "algo=dylora"'
+        # This is a hack to fix a train_network LoHA logic issue
+        if not network_dropout > 0.0:
+            run_cmd += f' --network_dropout="{network_dropout}"'
+
+    if LoRA_type == 'LyCORIS/LoKr':
+        try:
+            import lycoris
+        except ModuleNotFoundError:
+            log.info(
+                "\033[1;31mError:\033[0m The required module 'lycoris_lora' is not installed. Please install by running \033[33mupgrade.ps1\033[0m before running this program."
+            )
+            return
+        run_cmd += f' --network_module=lycoris.kohya'
+        run_cmd += f' --network_args "conv_dim={conv_dim}" "conv_alpha={conv_alpha}" "factor={factor}" "use_cp={use_cp}" "algo=lokr"'
+        # This is a hack to fix a train_network LoHA logic issue
+        if not network_dropout > 0.0:
+            run_cmd += f' --network_dropout="{network_dropout}"'
 
     if LoRA_type in ['Kohya LoCon', 'Standard']:
         kohya_lora_var_list = [
@@ -652,6 +745,8 @@ def train_model(
             'block_alphas',
             'conv_dims',
             'conv_alphas',
+            'rank_dropout',
+            'module_dropout',
         ]
 
         run_cmd += f' --network_module=networks.lora'
@@ -663,7 +758,7 @@ def train_model(
 
         network_args = ''
         if LoRA_type == 'Kohya LoCon':
-            network_args += f' "conv_dim={conv_dim}" "conv_alpha={conv_alpha}"'
+            network_args += f' conv_dim="{conv_dim}" conv_alpha="{conv_alpha}"'
 
         for key, value in kohya_lora_vars.items():
             if value:
@@ -684,6 +779,8 @@ def train_model(
             'block_alphas',
             'conv_dims',
             'conv_alphas',
+            'rank_dropout',
+            'module_dropout',
             'unit',
         ]
 
@@ -728,7 +825,7 @@ def train_model(
             run_cmd += f' --network_weights="{lora_network_weights}"'
         if dim_from_weights:
             run_cmd += f' --dim_from_weights'
-            
+
     if int(gradient_accumulation_steps) > 1:
         run_cmd += f' --gradient_accumulation_steps={int(gradient_accumulation_steps)}'
     if not output_name == '':
@@ -739,6 +836,12 @@ def train_model(
         run_cmd += f' --lr_scheduler_num_cycles="{epoch}"'
     if not lr_scheduler_power == '':
         run_cmd += f' --lr_scheduler_power="{lr_scheduler_power}"'
+
+    if scale_weight_norms > 0.0:
+        run_cmd += f' --scale_weight_norms="{scale_weight_norms}"'
+
+    if network_dropout > 0.0:
+        run_cmd += f' --network_dropout="{network_dropout}"'
 
     run_cmd += run_cmd_training(
         learning_rate=learning_rate,
@@ -792,6 +895,7 @@ def train_model(
         save_last_n_steps_state=save_last_n_steps_state,
         use_wandb=use_wandb,
         wandb_api_key=wandb_api_key,
+        scale_v_pred_loss_like_noise_pred=scale_v_pred_loss_like_noise_pred,
     )
 
     run_cmd += run_cmd_sample(
@@ -820,12 +924,12 @@ def train_model(
     #     run_cmd += f' --conv_alphas="{conv_alphas}"'
 
     if print_only_bool:
-        print(
-            '\033[93m\nHere is the trainer command as a reference. It will not be executed:\033[0m\n'
+        log.warning(
+            'Here is the trainer command as a reference. It will not be executed:\n'
         )
-        print('\033[96m' + run_cmd + '\033[0m\n')
+        log.info(run_cmd)
     else:
-        print(run_cmd)
+        log.info(run_cmd)
         # Run the command
         if os.name == 'posix':
             os.system(run_cmd)
@@ -968,9 +1072,11 @@ def lora_tab(
                 choices=[
                     'Kohya DyLoRA',
                     'Kohya LoCon',
-                    # 'LoCon',
+                    'LyCORIS/DyLoRA',
+                    'LyCORIS/iA3',
                     'LyCORIS/LoCon',
                     'LyCORIS/LoHa',
+                    'LyCORIS/LoKr',
                     'Standard',
                 ],
                 value='Standard',
@@ -980,7 +1086,7 @@ def lora_tab(
                     lora_network_weights = gr.Textbox(
                         label='LoRA network weights',
                         placeholder='(Optional)',
-                        info='Path to an existing LoRA network weights to resume training from'
+                        info='Path to an existing LoRA network weights to resume training from',
                     )
                     lora_network_weights_file = gr.Button(
                         document_symbol,
@@ -1031,6 +1137,30 @@ def lora_tab(
                 value='0.0001',
                 info='Optional',
             )
+        with gr.Row():
+            factor = gr.Slider(
+                label='LoKr factor',
+                value=-1,
+                minimum=-1,
+                maximum=64,
+                step=1,
+                visible=False,
+            )
+            use_cp = gr.Checkbox(
+                value=False,
+                label='Use CP decomposition',
+                info='A two-step approach utilizing tensor decomposition and fine-tuning to accelerate convolution layers in large neural networks, resulting in significant CPU speedups with minor accuracy drops.',
+            )
+            decompose_both = gr.Checkbox(
+                value=False,
+                label='LoKr decompose both',
+            )
+            train_on_input = gr.Checkbox(
+                value=False,
+                label='iA3 train on input',
+            )
+
+        with gr.Row():
             network_dim = gr.Slider(
                 minimum=1,
                 maximum=1024,
@@ -1065,11 +1195,45 @@ def lora_tab(
                 step=0.1,
                 label='Convolution Alpha',
             )
+        with gr.Row():
+            scale_weight_norms = gr.Slider(
+                label='Scale weight norms',
+                value=0,
+                minimum=0,
+                maximum=1,
+                step=0.01,
+                info='Max Norm Regularization is a technique to stabilize network training by limiting the norm of network weights. It may be effective in suppressing overfitting of LoRA and improving stability when used with other LoRAs. See PR for details.',
+                interactive=True,
+            )
+            network_dropout = gr.Slider(
+                label='Network dropout',
+                value=0,
+                minimum=0,
+                maximum=1,
+                step=0.01,
+                info='Is a normal probability dropout at the neuron level. In the case of LoRA, it is applied to the output of down. Recommended range 0.1 to 0.5',
+            )
+            rank_dropout = gr.Slider(
+                label='Rank dropout',
+                value=0,
+                minimum=0,
+                maximum=1,
+                step=0.01,
+                info='can specify `rank_dropout` to dropout each rank with specified probability. Recommended range 0.1 to 0.3',
+            )
+            module_dropout = gr.Slider(
+                label='Module dropout',
+                value=0.0,
+                minimum=0.0,
+                maximum=1.0,
+                step=0.01,
+                info='can specify `module_dropout` to dropout each rank with specified probability. Recommended range 0.1 to 0.3',
+            )
         with gr.Row(visible=False) as kohya_dylora:
             unit = gr.Slider(
                 minimum=1,
                 maximum=64,
-                label='DyLoRA Unit',
+                label='DyLoRA Unit / Block size',
                 value=1,
                 step=1,
                 interactive=True,
@@ -1078,14 +1242,17 @@ def lora_tab(
         # Show of hide LoCon conv settings depending on LoRA type selection
         def update_LoRA_settings(LoRA_type):
             # Print a message when LoRA type is changed
-            print('LoRA type changed...')
+            log.info('LoRA type changed...')
 
             # Determine if LoCon_row should be visible based on LoRA_type
             LoCon_row = LoRA_type in {
                 'LoCon',
                 'Kohya DyLoRA',
                 'Kohya LoCon',
+                'LyCORIS/DyLoRA',
+                'LyCORIS/iA3',
                 'LyCORIS/LoHa',
+                'LyCORIS/LoKr',
                 'LyCORIS/LoCon',
             }
 
@@ -1095,7 +1262,7 @@ def lora_tab(
                 'Kohya DyLoRA',
                 'Kohya LoCon',
             }
-            
+
             # Determine if LoRA network weights should be visible based on LoRA_type
             LoRA_network_weights_visible = LoRA_type in {
                 'Standard',
@@ -1104,8 +1271,65 @@ def lora_tab(
                 'Kohya LoCon',
             }
 
+            # Determine if LyCORIS factor should be visible based on LoRA_type
+            LoKr_factor_visible = LoRA_type in {
+                'LyCORIS/LoKr',
+            }
+
+            # Determine if LyCORIS use_cp should be visible based on LoRA_type
+            use_cp_visible = LoRA_type in {
+                'LyCORIS/DyLoRA',
+                'LyCORIS/LoHa',
+                'LyCORIS/LoCon',
+                'LyCORIS/LoKr',
+            }
+
+            # Determine if LyCORIS decompose_both should be visible based on LoRA_type
+            LoKr_decompose_both_visible = LoRA_type in {
+                'LyCORIS/LoKr',
+            }
+
+            # Determine if scale_weight_norms should be visible based on LoRA_type
+            scale_weight_norms_visible = LoRA_type in {
+                'Kohya DyLoRA',
+                'Kohya LoCon',
+            }
+
+            # Determine if network_dropout should be visible based on LoRA_type
+            network_dropout_visible = LoRA_type in {
+                'LoCon',
+                'Kohya DyLoRA',
+                'Kohya LoCon',
+                'LyCORIS/DyLoRA',
+                'LyCORIS/LoHa',
+                'LyCORIS/LoCon',
+                'LyCORIS/LoKr',
+            }
+
+            # Determine if scale_weight_norms should be visible based on LoRA_type
+            rank_dropout_visible = LoRA_type in {
+                'LoCon',
+                'Kohya DyLoRA',
+                'Kohya LoCon',
+            }
+
+            # Determine if module_dropout should be visible based on LoRA_type
+            module_dropout_visible = LoRA_type in {
+                'LoCon',
+                'Kohya DyLoRA',
+                'Kohya LoCon',
+            }
+
+            # Determine if train_on_input should be visible based on LoRA_type
+            train_on_input_visible = LoRA_type in {
+                'LyCORIS/iA3',
+            }
+
             # Determine if kohya_dylora_visible should be visible based on LoRA_type
-            kohya_dylora_visible = LoRA_type == 'Kohya DyLoRA'
+            kohya_dylora_visible = LoRA_type in {
+                'Kohya DyLoRA',
+                'LyCORIS/DyLoRA',
+            }
 
             # Return the updated visibility settings for the groups
             return (
@@ -1115,6 +1339,14 @@ def lora_tab(
                 gr.Textbox.update(visible=LoRA_network_weights_visible),
                 gr.Button.update(visible=LoRA_network_weights_visible),
                 gr.Checkbox.update(visible=LoRA_network_weights_visible),
+                gr.Slider.update(visible=LoKr_factor_visible),
+                gr.Slider.update(visible=use_cp_visible),
+                gr.Slider.update(visible=LoKr_decompose_both_visible),
+                gr.Slider.update(visible=train_on_input_visible),
+                gr.Slider.update(visible=scale_weight_norms_visible),
+                gr.Slider.update(visible=network_dropout_visible),
+                gr.Slider.update(visible=rank_dropout_visible),
+                gr.Slider.update(visible=module_dropout_visible),
             )
 
         with gr.Row():
@@ -1190,8 +1422,12 @@ def lora_tab(
                 no_token_padding = gr.Checkbox(
                     label='No token padding', value=False
                 )
-                gradient_accumulation_steps = gr.Number(
-                    label='Gradient accumulate steps', value='1'
+                gradient_accumulation_steps = gr.Slider(
+                    label='Gradient accumulate steps',
+                    value='1',
+                    minimum=1,
+                    maximum=128,
+                    step=1,
                 )
                 weighted_captions = gr.Checkbox(
                     label='Weighted captions',
@@ -1211,6 +1447,7 @@ def lora_tab(
                     label='LR power',
                     placeholder='(Optional) For Cosine with restart and polynomial only',
                 )
+
             (
                 # use_8bit_adam,
                 xformers,
@@ -1233,7 +1470,9 @@ def lora_tab(
                 bucket_reso_steps,
                 caption_dropout_every_n_epochs,
                 caption_dropout_rate,
-                noise_offset_type,noise_offset,adaptive_noise_scale,
+                noise_offset_type,
+                noise_offset,
+                adaptive_noise_scale,
                 multires_noise_iterations,
                 multires_noise_discount,
                 additional_parameters,
@@ -1244,6 +1483,7 @@ def lora_tab(
                 save_last_n_steps_state,
                 use_wandb,
                 wandb_api_key,
+                scale_v_pred_loss_like_noise_pred,
             ) = gradio_advanced_training(headless=headless)
             color_aug.change(
                 color_aug_changed,
@@ -1261,7 +1501,22 @@ def lora_tab(
         LoRA_type.change(
             update_LoRA_settings,
             inputs=[LoRA_type],
-            outputs=[LoCon_row, kohya_advanced_lora, kohya_dylora, lora_network_weights, lora_network_weights_file, dim_from_weights],
+            outputs=[
+                LoCon_row,
+                kohya_advanced_lora,
+                kohya_dylora,
+                lora_network_weights,
+                lora_network_weights_file,
+                dim_from_weights,
+                factor,
+                use_cp,
+                decompose_both,
+                train_on_input,
+                scale_weight_norms,
+                network_dropout,
+                rank_dropout,
+                module_dropout,
+            ],
         )
 
     with gr.Tab('Tools'):
@@ -1336,7 +1591,8 @@ def lora_tab(
         text_encoder_lr,
         unet_lr,
         network_dim,
-        lora_network_weights,dim_from_weights,
+        lora_network_weights,
+        dim_from_weights,
         color_aug,
         flip_aug,
         clip_skip,
@@ -1360,10 +1616,16 @@ def lora_tab(
         caption_dropout_rate,
         optimizer,
         optimizer_args,
-        noise_offset_type,noise_offset,adaptive_noise_scale,
+        noise_offset_type,
+        noise_offset,
+        adaptive_noise_scale,
         multires_noise_iterations,
         multires_noise_discount,
         LoRA_type,
+        factor,
+        use_cp,
+        decompose_both,
+        train_on_input,
         conv_dim,
         conv_alpha,
         sample_every_n_steps,
@@ -1388,6 +1650,11 @@ def lora_tab(
         save_last_n_steps_state,
         use_wandb,
         wandb_api_key,
+        scale_v_pred_loss_like_noise_pred,
+        scale_weight_norms,
+        network_dropout,
+        rank_dropout,
+        module_dropout,
     ]
 
     button_open_config.click(
@@ -1442,11 +1709,11 @@ def UI(**kwargs):
     css = ''
 
     headless = kwargs.get('headless', False)
-    print(f'headless: {headless}')
+    log.info(f'headless: {headless}')
 
     if os.path.exists('./style.css'):
         with open(os.path.join('./style.css'), 'r', encoding='utf8') as file:
-            print('Load CSS...')
+            log.info('Load CSS...')
             css += file.read() + '\n'
 
     interface = gr.Blocks(
@@ -1489,6 +1756,7 @@ def UI(**kwargs):
         launch_kwargs['inbrowser'] = inbrowser
     if share:
         launch_kwargs['share'] = share
+    log.info(launch_kwargs)
     interface.launch(**launch_kwargs)
 
 
