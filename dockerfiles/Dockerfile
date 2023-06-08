@@ -1,2 +1,4 @@
 FROM kohya_ss-base:latest
-COPY . /app
+COPY . .
+STOPSIGNAL SIGINT
+ENV LD_PRELOAD=libtcmalloc.so
