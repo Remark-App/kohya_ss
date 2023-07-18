@@ -1,0 +1,10 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: [ 'build', "--network=cloudbuild", '-t', '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/main:$COMMIT_SHA', '-f', 'dockerfiles/GCP/Dockerfile', '.' ]
+images:
+- '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/main:$COMMIT_SHA'
+options:
+  logging: CLOUD_LOGGING_ONLY
+substitutions:
+  _LOCATION: us
+  _REPOSITORY: kohya-ss
